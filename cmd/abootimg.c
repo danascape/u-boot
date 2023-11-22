@@ -8,7 +8,9 @@
 #include <common.h>
 #include <command.h>
 #include <image.h>
+#include <malloc.h>
 #include <mapmem.h>
+#include <part.h>
 
 #define abootimg_addr() \
 	(_abootimg_addr == -1 ? image_load_addr : _abootimg_addr)
@@ -243,10 +245,81 @@ static int do_abootimg_dump(struct cmd_tbl *cmdtp, int flag, int argc,
 	return CMD_RET_SUCCESS;
 }
 
+static int do_abootimg_load(struct cmd_tbl *cmdtp, int flag, int argc,
+			    char *const argv[])
+{
+	int time_start = get_timer(0);
+	struct blk_desc *desc;
+	struct disk_partition info;
+	char buf[512] = { 0 };
+	void *addr;
+	int ret;
+
+	if (argc < 4)
+		return CMD_RET_USAGE;
+	if (argc > 5)
+		return CMD_RET_USAGE;
+
+	ret = blk_get_device_by_str(argv[1], argv[2], &desc);
+	if (ret < 0) {
+		printf("Error: Failed to get device %s %s\n", argv[1], argv[2]);
+		return CMD_RET_FAILURE;
+	}
+
+	if (argc == 5)
+		sprintf(buf, "%s_%s", argv[3], argv[4]);
+	else
+		sprintf(buf, "%s", argv[3]);
+
+	ret = part_get_info_by_name(desc, buf, &info);
+	if (ret < 0) {
+		printf("Error: Failed to get partition %s\n", buf);
+		return CMD_RET_FAILURE;
+	}
+
+	addr = (void *)memalign(4096, info.size * info.blksz);
+	if (!addr) {
+		printf("Error: Failed to allocate memory\n");
+		return CMD_RET_FAILURE;
+	}
+
+	ret = blk_dread(desc, info.start, info.size, addr);
+	if (ret < 0) {
+		printf("Error: Failed to read partition %s\n", buf);
+		goto fail;
+	}
+
+	sprintf(buf, "abootimg_%s_ptr", argv[3]);
+	env_set_hex(buf, (ulong)addr);
+
+	sprintf(buf, "abootimg_%s_size", argv[3]);
+	env_set_hex(buf, info.size * info.blksz);
+
+	if (argc == 5) {
+		sprintf(buf, "abootimg_%s_%s_ptr", argv[3], argv[4]);
+		env_set_hex(buf, (ulong)addr);
+
+		sprintf(buf, "abootimg_%s_%s_size", argv[3], argv[4]);
+		env_set_hex(buf, info.size * info.blksz);
+	}
+
+	int time_end = get_timer(0);
+
+	printf("Loaded '%s' partition to address 0x%p (size: 0x%x) in %lu ms\n",
+	       argv[3], addr, info.size * info.blksz, time_end - time_start);
+
+	return CMD_RET_SUCCESS;
+
+fail:
+	free(addr);
+	return CMD_RET_FAILURE;
+}
+
 static struct cmd_tbl cmd_abootimg_sub[] = {
 	U_BOOT_CMD_MKENT(addr, 3, 1, do_abootimg_addr, "", ""),
 	U_BOOT_CMD_MKENT(dump, 2, 1, do_abootimg_dump, "", ""),
 	U_BOOT_CMD_MKENT(get, 5, 1, do_abootimg_get, "", ""),
+	U_BOOT_CMD_MKENT(load, 5, 1, do_abootimg_load, "", ""),
 };
 
 static int do_abootimg(struct cmd_tbl *cmdtp, int flag, int argc,
@@ -289,5 +362,14 @@ U_BOOT_CMD(
 	"    - get address and size (hex) of DT blob in the image by index\n"
 	"      <num>: index number of desired DT blob in DTB area\n"
 	"      [addr_var]: variable name to contain DT blob address\n"
-	"      [size_var]: variable name to contain DT blob size"
+	"      [size_var]: variable name to contain DT blob size\n"
+	"abootimg load interface dev partition [slot_name]\n"
+	"    - load boot image from device partition\n"
+	"      memory is allocated in heap\n"
+	"      address is stored in $abootimg_<partition>_ptr\n"
+	"      size is stored in $abootimg_<partition>_size\n"
+	"      interface: interface type (e.g. mmc, usb)\n"
+	"      dev: device number (e.g. 0, 1)\n"
+	"      partition: partition number (e.g. boot, dtb)\n"
+	"      slot_suffix: slot name (e.g. a, b)"
 );
