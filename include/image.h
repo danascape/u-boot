@@ -1826,6 +1826,18 @@ struct andr_image_data;
 bool android_image_get_data(const void *boot_hdr, const void *vendor_boot_hdr,
 			    struct andr_image_data *data);
 
+/**
+ * android_image_get_valuable_size() - get the size of the android image
+ *
+ * This function checks if the image is Android boot image and returns the
+ * valuable size of the image.
+ *
+ * @hdr_addr: Boot image header address (boot or vendor_boot)
+ *
+ * @return size of the image on success, 0 on failure
+ */
+size_t android_image_get_valuable_size(const void *hdr_addr);
+
 struct andr_boot_img_hdr_v0;
 
 /**
