@@ -209,6 +209,76 @@ bool android_image_get_data(const void *boot_hdr, const void *vendor_boot_hdr,
 	return true;
 }
 
+/**
+ * android_image_get_valuable_size() - get the size of the android image
+ *
+ * This function checks if the image is Android boot image and returns the
+ * valuable size of the image.
+ *
+ * @hdr_addr: Boot image header address (boot or vendor_boot)
+ *
+ * @return size of the image on success, 0 on failure
+ */
+size_t android_image_get_valuable_size(const void *hdr_addr)
+{
+	int version, size;
+
+	if (is_android_boot_image_header(hdr_addr)) {
+		const struct andr_boot_img_hdr_v0 *hdr = hdr_addr;
+
+		version = ((struct andr_boot_img_hdr_v0 *)hdr_addr)->header_version;
+		if (version > 2) {
+			const struct andr_boot_img_hdr_v3 *hdr = hdr_addr;
+
+			size = ALIGN(hdr->header_size, ANDR_GKI_PAGE_SIZE);
+			size += ALIGN(hdr->kernel_size, ANDR_GKI_PAGE_SIZE);
+			size += ALIGN(hdr->ramdisk_size, ANDR_GKI_PAGE_SIZE);
+
+			if (version > 3)
+				size += ALIGN(hdr->signature_size, ANDR_GKI_PAGE_SIZE);
+
+			return size;
+		}
+
+		size = hdr->page_size;
+		size += ALIGN(hdr->kernel_size, hdr->page_size);
+		size += ALIGN(hdr->ramdisk_size, hdr->page_size);
+		size += ALIGN(hdr->second_size, hdr->page_size);
+
+		if (version > 0)
+			size += ALIGN(hdr->recovery_dtbo_size, hdr->page_size);
+
+		if (version > 1)
+			size += ALIGN(hdr->dtb_size, hdr->page_size);
+
+		return size;
+	}
+
+	if (is_android_vendor_boot_image_header(hdr_addr)) {
+		const struct andr_vnd_boot_img_hdr *hdr = hdr_addr;
+
+		version = ((struct andr_vnd_boot_img_hdr *)hdr_addr)->header_version;
+		if (version < 3) {
+			printf("Vendor boot image header version %d is not supported\n", version);
+
+			return 0;
+		}
+
+		size = ALIGN(hdr->header_size, hdr->page_size);
+		size += ALIGN(hdr->vendor_ramdisk_size, hdr->page_size);
+		size += ALIGN(hdr->dtb_size, hdr->page_size);
+
+		if (version > 3) {
+			size += ALIGN(hdr->vendor_ramdisk_table_size, hdr->page_size);
+			size += ALIGN(hdr->bootconfig_size, hdr->page_size);
+		}
+
+		return size;
+	}
+
+	return 0;
+}
+
 static ulong android_image_get_kernel_addr(struct andr_image_data *img_data,
 					   ulong comp)
 {

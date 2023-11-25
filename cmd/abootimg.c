@@ -191,6 +191,35 @@ static int abootimg_get_dtb(int argc, char *const argv[])
 	return CMD_RET_USAGE;
 }
 
+static int abootimg_smart_load(struct blk_desc *desc, struct disk_partition *info, void *addr)
+{
+	int ret, size;
+
+	ret = blk_dread(desc, info->start, 4096 / info->blksz, addr);
+	if (ret < 0) {
+		printf("Error: Failed to read partition\n");
+		return CMD_RET_FAILURE;
+	}
+
+	size = android_image_get_valuable_size(addr);
+	if (size == 0)
+		return 0;
+
+	ret = blk_dread(desc, info->start, DIV_ROUND_UP(size, info->blksz), addr);
+	if (ret < 0) {
+		printf("Error: Failed to read partition\n");
+		return CMD_RET_FAILURE;
+	}
+
+	memset(addr + size, 0, info->size * info->blksz - size);
+
+	printf("Loaded Android boot image using smart load (%d/%d MB)\n",
+	       (int)DIV_ROUND_UP(size, 1024 * 1024),
+	       (int)DIV_ROUND_UP(info->size * info->blksz, 1024 * 1024));
+
+	return size;
+}
+
 static int do_abootimg_addr(struct cmd_tbl *cmdtp, int flag, int argc,
 			    char *const argv[])
 {
@@ -308,10 +337,13 @@ static int do_abootimg_load(struct cmd_tbl *cmdtp, int flag, int argc,
 		return CMD_RET_FAILURE;
 	}
 
-	ret = blk_dread(desc, info.start, info.size, addr);
-	if (ret < 0) {
-		printf("Error: Failed to read partition %s\n", buf);
-		goto fail;
+	ret = abootimg_smart_load(desc, &info, addr);
+	if (ret <= 0) {
+		ret = blk_dread(desc, info.start, info.size, addr);
+		if (ret < 0) {
+			printf("Error: Failed to read partition %s\n", buf);
+			goto fail;
+		}
 	}
 
 	sprintf(buf, "abootimg_%s_ptr", argv[3]);
