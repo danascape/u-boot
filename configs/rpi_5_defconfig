@@ -61,3 +61,4 @@ CONFIG_PHYS_TO_BUS=y
 # Vispero Additions
 #
 CONFIG_CMD_BCB=y
+CONFIG_CMD_ABOOTIMG=y
