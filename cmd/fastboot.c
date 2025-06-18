@@ -13,6 +13,7 @@
 #include <fastboot.h>
 #include <net.h>
 #include <usb.h>
+#include <usb_mass_storage.h>
 #include <watchdog.h>
 #include <linux/printk.h>
 #include <linux/stringify.h>
